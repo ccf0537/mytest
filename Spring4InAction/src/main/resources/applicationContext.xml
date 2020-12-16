@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:c="http://www.springframework.org/schema/c"
+       xmlns:jms="http://www.springframework.org/schema/jms"
+       xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+       xsi:schemaLocation="
+       http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context.xsd
+       http://www.springframework.org/schema/jms
+       http://www.springframework.org/schema/jms/spring-jms-2.5.xsd
+       http://www.springframework.org/schema/rabbit
+       http://www.springframework.org/schema/rabbit/spring-rabbit-1.0.xsd">
+
+    <context:component-scan base-package="com"/>
+
+    <!--
+        第三方bean注册到spring必须使用xml方式配置，因为没有源码无法加注解
+        p命名空间用来通过set属性的方式注入其他bean或值作为当前bean的属性，是<property>子标签的简写方式
+        此处p:brokerURL 表示将属性值注入到bean的setBrokerURL方法中
+        c命名空间通过构造函数的方式为当前bean注入其他bean,是<constructor-arg>子标签的简写方式
+        此处c:_0 表示将属性值作为构造函数的第一个参数传入
+     -->
+    <!--active mq start-->
+    <!--配置消息连接工厂，activeMQ-->
+    <bean id="activeMQConnectionFactory" class="org.apache.activemq.spring.ActiveMQConnectionFactory" p:brokerURL="tcp://127.0.0.1:61616"></bean>
+    <!--配置消息发送目的地
+         1 队列：点对点发送接收，一条消息只能被一个消费者接收
+         2 主题：一对多发送接收，一条消息可被多个消费者接收
+     -->
+    <bean id="queue" class="org.apache.activemq.command.ActiveMQQueue" c:_0="my.queue"></bean>
+    <bean id="topic" class="org.apache.activemq.command.ActiveMQTopic" c:_0="my.queue"></bean>
+    <bean id="messageConverter" class="org.springframework.jms.support.converter.SimpleMessageConverter"></bean>
+    <!--将activeMQConnectionFactory的引用作为第一个参数注入到jmsTemplate的构造函数生成jmsTemplate实例-->
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate"
+          c:_0-ref="activeMQConnectionFactory"
+          p:defaultDestination-ref="queue"
+          p:messageConverter-ref="messageConverter">
+    </bean>
+    <!--配置消息处理器bean-->
+    <bean id="messageHandler" class="com.service.MessageService"></bean>
+    <!--配置消息监听容器，消息监听器容器（message listener container）是一个特殊的bean，它可以监控JMS目的地并等待消息到达。
+        一旦有消息到达，它取出消息，然后把消息传给任意一个对此消息感兴趣的消息监听器。
+     -->
+    <jms:listener-container connection-factory="activeMQConnectionFactory">
+        <!--将消息处理器bean配置为消息处理容器的一个消息监听器
+            此处一旦消息目的地my.queue有消息到达，消息处理容器就把消息传给ref指定的消息处理器，调用method指定的方法
+         -->
+        <jms:listener destination="my.queue" ref="messageHandler" method="handlerMessage"></jms:listener>
+    </jms:listener-container>
+    <!--active mq end-->
+    <!--rabbit mq start-->
+    <!--rabbit mq 连接工厂-->
+    <rabbit:connection-factory id="rabbitMQConnectionFactory" host="localhost" port="5672" username="guest" password="guest"></rabbit:connection-factory>
+    <rabbit:admin connection-factory="rabbitMQConnectionFactory"/>
+    <rabbit:queue id="rabbit.queue1" name="rabbit.queue1"/>
+    <rabbit:queue id="rabbit.queue2" name="rabbit.queue2"/>
+    <rabbit:fanout-exchange name="fanout.exchange">
+        <rabbit:bindings>
+            <rabbit:binding queue="rabbit.queue1"></rabbit:binding>
+            <rabbit:binding queue="rabbit.queue2"></rabbit:binding>
+        </rabbit:bindings>
+    </rabbit:fanout-exchange>
+    <rabbit:template id="rabbitTemplate" connection-factory="rabbitMQConnectionFactory"/>
+    <!--rabbit mq end-->
+</beans>
